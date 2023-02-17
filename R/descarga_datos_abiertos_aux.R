@@ -35,36 +35,45 @@
 #' }
 #' @examples
 #' \donttest{
-#' # Descarga solo el diccionario
-#' diccionario <- descarga_diccionario(show_warnings = FALSE)
+#' #Estos links deben omitirse en una corrida normal. Se incluyen por ahora como ejemplo
+#' #pero las opciones site.covid.dic y sites.covid deben eliminarse de abajo.
+#' diclink   <- "https://github.com/RodrigoZepeda/covidmx/raw/main/diccionario_datos_covid19.zip"
+#' dlink     <- "https://github.com/RodrigoZepeda/covidmx/raw/main/datos_abiertos_covid19.zip"
+#' 
+#' #' #En el ejemplo de R por normas de CRAN tenemos que hacerlo así pero en tu
+#' #computadora puedes solo usar descargar datos sin el if else
+#' if (RCurl::url.exists(dlink) & RCurl::url.exists(diclink)){
+#'   
+#'   # Descarga solo el diccionario no oficial (omite el site.covid.dic para el de DGE)
+#'   diccionario <- descarga_diccionario(show_warnings = FALSE, site.covid.dic = diclink)
 #'
-#' # O bien descarga solo los datos abiertos de ejemplo desde Github
-#' # omite el dlink (o cámbialo por el vínculo correcto) para descargar los datos de la DGE
-#' dlink <- "https://github.com/RodrigoZepeda/covidmx/raw/main/datos_abiertos_covid19.zip"
-#' datos_abiertos <- descarga_db(sites.covid = dlink, show_warnings = FALSE)
+#'   # O bien descarga solo los datos abiertos de ejemplo desde Github
+#'   # omite el dlink (o cámbialo por el vínculo correcto) para descargar los datos de la DGE
+#'   datos_abiertos <- descarga_db(sites.covid = dlink, show_warnings = FALSE)
 #'
-#' # Pegalos en el formato que se necesita para el resto de funciones
-#' datos_covid <- pega_db_datos_abiertos_tbl_y_diccionario(datos_abiertos, diccionario)
+#'   # Pegalos en el formato que se necesita para el resto de funciones
+#'   datos_covid <- pega_db_datos_abiertos_tbl_y_diccionario(datos_abiertos, diccionario)
 #'
-#' # Desconectamos
-#' datos_covid$disconnect()
+#'   # Desconectamos
+#'   datos_covid$disconnect()
 #'
-#' # Tambien puedes descargar paso por paso
-#' datos_abiertos <- descarga_db_datos_abiertos_tbl(
-#'   sites.covid = dlink,
-#'   show_warnings = FALSE
-#' ) |> # Descarga
+#'   # Tambien puedes descargar paso por paso
+#'   datos_abiertos <- descarga_db_datos_abiertos_tbl(
+#'     sites.covid = dlink,
+#'     show_warnings = FALSE
+#'   ) |> # Descarga
 #'   unzip_db_datos_abiertos_tbl() |> # Unzippea
 #'   parse_db_datos_abiertos_tbl() # Duckdb
 #'
-#' # O bien el diccionario
-#' diccionario <- descarga_db_diccionario_ssa() |> # Descarga
+#'   # O bien el diccionario
+#'   diccionario <- descarga_db_diccionario_ssa(site.covid.dic = diclink) |> # Descarga
 #'   unzip_db_diccionario_ssa() |> # Unzippea
 #'   parse_db_diccionario_ssa() # Tibble
 #'
-#' # Si descargaste cada uno por separado necesitas la funcion pega para
-#' # juntarlos en un unico objeto
-#' datos_covid <- pega_db_datos_abiertos_tbl_y_diccionario(datos_abiertos, diccionario)
+#'   # Si descargaste cada uno por separado necesitas la funcion pega para
+#'   # juntarlos en un unico objeto
+#'   datos_covid <- pega_db_datos_abiertos_tbl_y_diccionario(datos_abiertos, diccionario)
+#' }
 #' }
 #' @encoding UTF-8
 #' @seealso [descarga_datos_abiertos()] [read_datos_abiertos()]  [descarga_datos_red_irag()]
@@ -458,7 +467,10 @@ unzip_db_datos_abiertos_tbl <- function(datos_abiertos_zip_paths,
     filecon <- tryCatch(
       {
         unzip(datos_abiertos_zip_path, overwrite = TRUE)
-        fname <- list.files(pattern = "?.*COVID19.*.csv", full.names = T)[1]
+        
+        #Get unzipped file name if changes
+        fname <- unzip(datos_abiertos_zip_path, list = T)$Name
+        fname <- list.files(pattern = fname, full.names = T)[1]
       },
       warning = function(cond) {
 
@@ -506,8 +518,11 @@ unzip_db_datos_abiertos_tbl <- function(datos_abiertos_zip_paths,
         }
 
         # Unzippeamos
+        fname <- system2(unzip_command, args = c("-l ", datos_abiertos_zip_path), stdout = TRUE)
+        fname <- grep(".*.csv", fname, value = TRUE)
+        fname <- sub(".*\\s","", fname)
         system2(unzip_command, args = c(unzip_args, datos_abiertos_zip_path), stdout = !quiet)
-        fname <- list.files(pattern = ".*COVID19.*.csv", full.names = T)[1]
+        fname <- list.files(pattern = fname[1], full.names = T)[1]
       },
       error = function(cond) {
         cli::cli_abort("No se puede leer {.file {datos_abiertos_zip_path}}")
@@ -692,14 +707,14 @@ parse_db_datos_abiertos_tbl <- function(datos_abiertos_unzipped_path,
       progress = !quiet,
       col_types = readr::cols(
         .default              = readr::col_character(),
-        FECHA_ACTUALIZACION   = readr::col_date(format = "%Y-%m-%d"),
+        FECHA_ACTUALIZACION   = readr::col_character(),
         ORIGEN                = readr::col_double(),
         SECTOR                = readr::col_double(),
         SEXO                  = readr::col_double(),
         TIPO_PACIENTE         = readr::col_double(),
-        FECHA_INGRESO         = readr::col_date(format = "%Y-%m-%d"),
-        FECHA_SINTOMAS        = readr::col_date(format = "%Y-%m-%d"),
-        FECHA_DEF             = readr::col_date(format = "%Y-%m-%d"),
+        FECHA_INGRESO         = readr::col_character(),
+        FECHA_SINTOMAS        = readr::col_character(),
+        FECHA_DEF             = readr::col_character(),
         INTUBADO              = readr::col_double(),
         NEUMONIA              = readr::col_double(),
         EDAD                  = readr::col_double(),
@@ -726,7 +741,10 @@ parse_db_datos_abiertos_tbl <- function(datos_abiertos_unzipped_path,
         MIGRANTE              = readr::col_double(),
         UCI                   = readr::col_double()
       )
-    )
+    ) |>
+    dplyr::mutate(dplyr::across(dplyr::starts_with("FECHA"), ~ dplyr::if_else(. == "9999-99-99", NA_character_, .))) |>
+    dplyr::mutate(dplyr::across(dplyr::starts_with("FECHA"), ~ dplyr::if_else(. == "-001-11-30", NA_character_, .))) |>
+    dplyr::mutate(dplyr::across(dplyr::starts_with("FECHA"), ~ strptime(., "%Y-%m-%d")))
 
     if (!quiet) {
       cli::cli_alert_info(
